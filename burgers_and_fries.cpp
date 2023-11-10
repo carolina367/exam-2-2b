@@ -15,7 +15,11 @@ int k;
 sem_t burger_sem;
 sem_t fries_sem;
 mutex mtx;
+
+int waiting_burgers = 0;
+int waiting_fries = 0;
 int last_order_type = -1;  // -1 indicates no last order
+
 
 // Do not change
 void process_order() {
@@ -23,28 +27,38 @@ void process_order() {
 }
 
 void place_order(int type) {
-    mtx.lock();
-    if (type == BURGER) {
-        sem_wait(&burger_sem);  // P() Decrement burger semaphore
+    bool must_wait = (type == BURGER ? (sem_trywait(&burger_sem) != 0) : (sem_trywait(&fries_sem) != 0));
+    
+    if (must_wait) {
+        // Display waiting status
+        mtx.lock();
+        cout << "Waiting: " << type_names[type] << endl;
         mtx.unlock();
-        cout << "Order: BURGER" << endl;
-    } else {
-        sem_wait(&fries_sem);  //P()  Decrement fries semaphore
-        mtx.unlock();
-        cout << "Order: FRIES" << endl;
+
+        // Now wait to acquire the semaphore
+        if (type == BURGER) {
+            ++waiting_burgers;
+            sem_wait(&burger_sem); // P() Decrement burger semaphore
+        } else {
+            ++waiting_fries;
+            sem_wait(&fries_sem);
+        }
+        last_order_type = type;
     }
 
-    process_order();  // Process the order for 2 seconds
-
+    // Print the order placed message
     mtx.lock();
-    // Post-processing, increment the semaphore for the next order.
-    // You will need to include logic to determine which type should be incremented based on your waiting logic.
-    if (type == BURGER) {
-        sem_post(&burger_sem); // V()
-    } else {
-        sem_post(&fries_sem); // V()
-    }
+    cout << "Order: " << type_names[type] << endl;
     mtx.unlock();
+
+    process_order(); // Process the order
+
+    // After processing, release the semaphore
+    if (type == BURGER) {
+        sem_post(&burger_sem); // V() Signal burger semaphore
+    } else {
+        sem_post(&fries_sem);
+    }
 }
 
 int main() {
